@@ -39,9 +39,9 @@ class hexaboard extends BaseModule {
             '17' : 0,
             '18' : 0, //VEHICLE_RIGHT_LED
             '19' : 0, //VEHICLE_LEFT_LED
-            'A17' : 0, //ANGLE_X
-            'A18' : 0, //ANGLE_Y
-            'A19' : 0, //ANGLE_Z
+            'A0' : 0, //ANGLE_X
+            'A1' : 0, //ANGLE_Y
+            'A2' : 0, //ANGLE_Z
             'D0' : 0, //HUMI
             'D1' : 0, //TEMP
             'D0' : 0, //DHT_HUMI
@@ -82,6 +82,7 @@ class hexaboard extends BaseModule {
             'WD32' : 0, //WEIGHT_SENSOR_1pin
             'WD33' : 0, //WEIGHT_SENSOR_2pin
             'WD4' : 0, //WEIGHT_SENSOR_3pin
+            'GI' : 0, //GYRO_INTENSITY
             'V1' :0,
             'V2' :0,
             'V3' :0,
@@ -143,6 +144,9 @@ class hexaboard extends BaseModule {
             OLED_HEXA: 0x37, //HEXA 앞의 OLED 값 정의
             WRITE_VEHICLE_LED: 0x38, //차량 LED 값 요청
             OLED_PRINT: 0x39, //OLED 출력 값 요청
+            READ_GYRO_INTENSITY: 0x40, //자이로 센서 세기 값 요청
+            CUSTOM_NEOPIXEL_LED: 0x41, //네오픽셀 LED 상태 변경
+
         };
         // 자이로 센서에 대한 추가적인 세부 명령 정의
         this.gyro_sensor = {
@@ -192,7 +196,7 @@ class hexaboard extends BaseModule {
         value.writeInt16LE(data);
         // 데이터 사이즈 : header 2 + length 1 + command 1 + type 1 + port 1 + duration 1 +data(2) + dummy
         let dataLength = 10;
-        const dummy = new Buffer([10]);
+        const dummy = Buffer.from([10]);
         let messageBuffer = Buffer.alloc(0);
         let colorBuffer = Buffer.alloc(0);
 
@@ -228,7 +232,7 @@ class hexaboard extends BaseModule {
             }
         }
         
-        buffer = new Buffer([
+        buffer = Buffer.from([
             255,
             85,
             dataLength,
@@ -239,17 +243,17 @@ class hexaboard extends BaseModule {
         ]);
         buffer = Buffer.concat([buffer, value, colorBuffer, messageBuffer, dummy]);
         // console.log('[Buffer] : ' + buffer);
-        console.log('[Buffer ARRAY] :', [...buffer]);
-        console.log('[Buffer structure] :', {
-            header: [255, 85],
-            dataLength: dataLength,
-            command: command,
-            sensorType: sensorType,
-            pin: pin,
-            duration: duration,
-            value: [...value],
-            colorBuffer: colorBuffer.length > 0 ? [...colorBuffer] : '없음',
-        });
+            console.log('[Buffer ARRAY] :', [...buffer]);
+            console.log('[Buffer structure] :', {
+                header: [255, 85],
+                dataLength: dataLength,
+                command: command,
+                sensorType: sensorType,
+                pin: pin,
+                duration: duration,
+                value: [...value],
+                colorBuffer: colorBuffer.length > 0 ? [...colorBuffer] : '없음',
+            });
 
         return buffer;
     };
@@ -262,7 +266,7 @@ class hexaboard extends BaseModule {
             password = '',
             auth = '',
         } = options;
-        const dummy = new Buffer([10]);
+        const dummy = Buffer.from([10]);
 
         const ssidBuffer = ssid ? Buffer.from(ssid, 'utf8') : Buffer.alloc(0);
         const passwordBuffer = password ? Buffer.from(password, 'utf8') : Buffer.alloc(0);
@@ -276,7 +280,7 @@ class hexaboard extends BaseModule {
         // console.log(`ssid : ${ssidBuffer}, password : ${passwordBuffer}, authtoken : ${authBuffer}`);
 
 
-        let buffer = new Buffer([
+        let buffer = Buffer.from([
             255,
             85,
             0, //Dummy 값
@@ -316,12 +320,12 @@ class hexaboard extends BaseModule {
         //     '→ 저장위치:', sensorType === this.sensorTypes.DIGITAL_READ ? `sensorDatas[${port}]` : `sensorDatas[${port}]`
         // );
 
-        // 추출된 데이터에 따른 처리 로직
-        let angle;
-        let portName;
-        let scaleName;
-        let sck;
-        switch (sensorType) {
+            // 추출된 데이터에 따른 처리 로직
+            let angle;
+            let portName;
+            let scaleName;
+            let sck;
+            switch (sensorType) {
             case this.sensorTypes.DIGITAL_READ:
                 // console.log(`SEND TO ENTRY FOR DIGITAL_READ : ${port}`);
                 this.sensorDatas[port] = value;
@@ -341,11 +345,16 @@ class hexaboard extends BaseModule {
                 }
                 break;
             case this.sensorTypes.READ_GYRO_ANGLE_SENSOR:
-                angle = value - 360 ;
-                this.sensorDatas[port] = angle;
+                angle = value - 360;
+                // port 값을 'A0', 'A1', 'A2' 형식으로 변환
+                portName = `A${port}`;
+                this.sensorDatas[portName] = angle;
                 break;
             case this.sensorTypes.READ_GYRO_SENSOR:
                 this.sensorDatas[port] = value;
+                break;
+            case this.sensorTypes.READ_GYRO_INTENSITY:
+                this.sensorDatas[`GI`] = value;
                 break;
             case this.sensorTypes.READ_COLOR_SENSOR:
                 portName = `C${port}`;
@@ -456,13 +465,15 @@ class hexaboard extends BaseModule {
                         const back = this.recvBuffers[i + 8];
                         const up = this.recvBuffers[i + 9];
                         const down = this.recvBuffers[i + 10];
-                        this.sensorDatas[this.gyro_sensor.LEFT] = left;
-                        this.sensorDatas[this.gyro_sensor.RIGHT] = right;
-                        this.sensorDatas[this.gyro_sensor.FRONT] = front;
-                        this.sensorDatas[this.gyro_sensor.BACK] = back;
-                        this.sensorDatas[this.gyro_sensor.UP] = up;
-                        this.sensorDatas[this.gyro_sensor.DOWN] = down;
-                        // console.log(`left : ${left} ,right : ${right} ,front : ${front} ,back : ${back} ,up : ${up} ,down : ${down}`);
+                        // sensorDatas는 문자열 키를 사용하므로 숫자를 문자열로 변환
+                        this.sensorDatas[String(this.gyro_sensor.LEFT)] = left;
+                        this.sensorDatas[String(this.gyro_sensor.RIGHT)] = right;
+                        this.sensorDatas[String(this.gyro_sensor.FRONT)] = front;
+                        this.sensorDatas[String(this.gyro_sensor.BACK)] = back;
+                        this.sensorDatas[String(this.gyro_sensor.UP)] = up;
+                        this.sensorDatas[String(this.gyro_sensor.DOWN)] = down;
+                        // READ_GYRO_SENSOR는 이미 위에서 직접 저장했으므로 processParsedData 호출 불필요
+                        console.log(`left : ${left} ,right : ${right} ,front : ${front} ,back : ${back} ,up : ${up} ,down : ${down}`);
                     } else {
                         // 무게센서인 경우 버퍼 구조가 다를 수 있음
                         if (sensorType === this.sensorTypes.READ_WEIGHT_SENSOR) {
@@ -492,6 +503,19 @@ class hexaboard extends BaseModule {
                             const valueLowByte = this.recvBuffers[i + 5];
                             const valueHighByte = this.recvBuffers[i + 6];
                             const value = (valueHighByte << 8) | valueLowByte;
+                            
+                            // 칼라센서일 때 로그 출력
+                            // if (sensorType === this.sensorTypes.READ_COLOR_SENSOR) {
+                            //     console.log('========================================');
+                            //     console.log('[COLOR_SENSOR] Protocol packet parsed');
+                            //     console.log('  - Packet start index:', i);
+                            //     console.log('  - Data length:', dataLength);
+                            //     console.log('  - Port:', port);
+                            //     console.log('  - SensorType:', sensorType, `(0x${sensorType.toString(16).toUpperCase()})`);
+                            //     console.log('  - Value Low Byte:', valueLowByte, 'High Byte:', valueHighByte);
+                            //     console.log('  - Value (combined):', value);
+                            //     console.log('  - Full packet bytes:', this.recvBuffers.slice(i, i + 2 + dataLength).join(', '));
+                            // }
                             
                             // console.log(`[PARSED] Port: ${port}, SensorType: 0x${sensorType.toString(16).toUpperCase()}, Value: ${value} (Low: ${valueLowByte}, High: ${valueHighByte})`);
                             
@@ -562,12 +586,12 @@ class hexaboard extends BaseModule {
         // console.log('test');
         const readData = handler.read('SET');
 
-        // console.log("handleRemoteData", readData);
-        if (readData) {
+            // console.log("handleRemoteData", readData);
+            if (readData) {
             // console.log("[handleRemoteData]", readData);
             //Write
             if (readData.type === this.command.WRITE) {
-                let buffer = new Buffer([]);
+                let buffer = Buffer.alloc(0);
                 let port;
                 let value;
                 let duration;
@@ -654,7 +678,7 @@ class hexaboard extends BaseModule {
                                 this.makeOutputBuffer({
                                     command : this.command.WRITE,
                                     sensorType : this.sensorTypes.SLIDE_NEOPIXEL,
-                                    // speed : slideSpeed,
+    
                                     duration : slideSpeed,  // slideSpeed를 data 위치(8번째 인덱스)에 저장
                                     message : printMessage,
                                     color : colorValue,
@@ -711,6 +735,31 @@ class hexaboard extends BaseModule {
                                     color : colorValue,
                                 }),
                             ]);
+                        if (buffer.length) {
+                            //이곳에서 데이터를 SendBuffer에 저장하기
+                            this.sendBuffers.push(buffer);
+                        }
+                        break;
+
+                    case this.sensorTypes.CUSTOM_NEOPIXEL_LED:
+                        console.log('[CUSTOM_NEOPIXEL_LED] Request from Entry');
+                        const payload = readData.data.payload; // "255,0,0:0,255,0:0,0,255" 형식
+                        colorValue = readData.data.color; // let으로 이미 선언된 변수에 할당
+                        console.log(`  - Color Value: ${colorValue}`);
+                        console.log(`  - Payload: ${payload}`);
+                        console.log(`  - Payload length: ${payload ? payload.length : 0}`);
+                        buffer = Buffer.concat(
+                            [buffer,
+                                this.makeOutputBuffer({
+                                    command : this.command.WRITE,
+                                    sensorType : this.sensorTypes.CUSTOM_NEOPIXEL_LED, // 0x41
+                                    pin: 0, // payload에 모든 정보가 포함되어 있으므로 pin은 0 또는 사용하지 않음
+                                    message : payload, // payload를 message로 전달 (모든 LED의 RGB 정보 포함)
+                                    color : colorValue
+                                    // color는 사용하지 않음 - payload에 모든 색상 정보가 포함되어 있음
+                                }),
+                            ]);
+
                         if (buffer.length) {
                             //이곳에서 데이터를 SendBuffer에 저장하기
                             this.sendBuffers.push(buffer);
@@ -881,9 +930,9 @@ class hexaboard extends BaseModule {
                 }
             }
 
-            //Read
+            //****************** Read ******************
             if (readData.type === this.command.READ) {
-                let buffer = new Buffer([]);
+                let buffer = Buffer.alloc(0);
                 let port;
                 let value;
                 // console.log('this.command.READ');
@@ -942,6 +991,21 @@ class hexaboard extends BaseModule {
                                 this.makeOutputBuffer({
                                     command : this.command.READ,
                                     sensorType : this.sensorTypes.READ_GYRO_ANGLE_SENSOR,
+                                    pin : port,
+                                }),
+                            ]);
+                        if (buffer.length) {
+                            this.sendBuffers.push(buffer);
+                        }
+                        break;
+
+                    case this.sensorTypes.READ_GYRO_INTENSITY:
+                        port = readData.data.pin;
+                        buffer = Buffer.concat(
+                            [buffer,
+                                this.makeOutputBuffer({
+                                    command : this.command.READ,
+                                    sensorType : this.sensorTypes.READ_GYRO_INTENSITY,
                                     pin : port,
                                 }),
                             ]);
@@ -1057,7 +1121,7 @@ class hexaboard extends BaseModule {
                             [buffer,
                                 this.makeOutputBuffer({
                                 command: this.command.READ,
-                                pin : Number(port),
+                                pin : port,
                                 sensorType: this.sensorTypes.READ_WATERQUALITY_SENSOR, // 0x29
                             }),
                         ]);
@@ -1127,6 +1191,22 @@ class hexaboard extends BaseModule {
                     }
                     break;
 
+                    case this.sensorTypes.READ_COLOR_SENSOR:
+                    port = readData.data.pin;
+                    buffer = Buffer.concat(
+                        [buffer,
+                            this.makeOutputBuffer({
+                            command : this.command.READ,
+                            sensorType : this.sensorTypes.READ_COLOR_SENSOR, // 0x6
+                            pin : port,
+                            color : readData.data.color,
+                        }),
+                    ]);
+                    if (buffer.length) {
+                        this.sendBuffers.push(buffer);
+                    }
+                    break;
+
                     case this.sensorTypes.READ_TOUCH_SENSOR:
                     port = readData.data.pin;
                     buffer = Buffer.concat(
@@ -1135,7 +1215,6 @@ class hexaboard extends BaseModule {
                             command : this.command.READ,
                             sensorType : this.sensorTypes.READ_TOUCH_SENSOR, // 0x34
                             pin : port,
-                            data : value,
                         }),
                     ]);
                     if (buffer.length) {
