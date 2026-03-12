@@ -1,5 +1,5 @@
 {
-    "id": "282199",
+    "id": "410301",
     "name": { "en": "AIROBOTARM", "ko": "AI로봇집게" },
     "category": "robot",
     "platform": ["win32", "darwin"],
@@ -29,3 +29,4 @@
         "firmwarecheck": false
     }
 }
+
